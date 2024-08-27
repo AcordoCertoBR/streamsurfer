@@ -1,4 +1,4 @@
-# streamsurfer
+# streamsurfer 🌊
 
 `streamsurfer` is a Go module that provides functionality to send messages in batches to a Kinesis stream.
 
@@ -78,3 +78,6 @@ queue, err := streamsurfer.NewWithOpts("your-stream-name", 2048)
 
 In the example above, a `KinesisQueue` is created with a custom queue size of 2048 KB. Adjusting the queue size allows you to control how much data can be accumulated before triggering the flushing process to send the messages to the Kinesis stream.
 
+
+## Special Thanks ❤️
+@JoaoLeal92
