@@ -114,7 +114,11 @@ func (q *KinesisQueue) Enqueue(data map[string]interface{}) error {
 		}
 	}
 
-	q.q.Put(data)
+	err := q.q.Put(data)
+	if err != nil {
+		return err
+	}
+
 	q.currentSize += itemSize
 	return nil
 }
