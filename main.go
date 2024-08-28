@@ -34,7 +34,7 @@ type KinesisQueue struct {
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
 func New(streamName string) (*KinesisQueue, error) {
-	return NewWithOpts(streamName, 1024)
+	return NewWithOpts(streamName, "sa-east-1", 1024)
 }
 
 // NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
@@ -48,7 +48,7 @@ func New(streamName string) (*KinesisQueue, error) {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, maxSizeKB int) (*KinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeKB int) (*KinesisQueue, error) {
 	if streamName == "" {
 		return &KinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
@@ -57,7 +57,7 @@ func NewWithOpts(streamName string, maxSizeKB int) (*KinesisQueue, error) {
 		return &KinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
 	}
 
-	kinesisClient, err := connectToKinesis()
+	kinesisClient, err := connectToKinesis(region)
 	if err != nil {
 		return &KinesisQueue{}, err
 	}
@@ -72,9 +72,14 @@ func NewWithOpts(streamName string, maxSizeKB int) (*KinesisQueue, error) {
 	return q, nil
 }
 
-func connectToKinesis() (*kinesis.Client, error) {
+func connectToKinesis(awsRegion string) (*kinesis.Client, error) {
+	if awsRegion == "" {
+		awsRegion = "sa-east-1"
+	}
+
 	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRetryMaxAttempts(5))
+		config.WithRetryMaxAttempts(5),
+		config.WithRegion(awsRegion))
 	if err != nil {
 		return &kinesis.Client{}, err
 	}
