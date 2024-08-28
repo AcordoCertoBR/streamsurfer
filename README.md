@@ -7,7 +7,7 @@
 To use `streamsurfer`, you need to have Go installed. You can install the module using the following command:
 
 ```bash
-go get github.com/AcordoCertoBR/streamsurfer@v1.0.1
+go get github.com/AcordoCertoBR/streamsurfer@v1.0.2
 ```
 
 ## Usage

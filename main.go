@@ -132,7 +132,7 @@ func (q *KinesisQueue) flush() ([]any, error) {
 	}
 
 	if len(items) > 0 {
-		data, err := q.SendToKinesis(items)
+		data, err := q.sendToKinesis(items)
 		if err != nil {
 			return data, err
 		}
@@ -144,7 +144,7 @@ func (q *KinesisQueue) flush() ([]any, error) {
 //
 // This method locks the KinesisQueue, processes the items, and sends them to the Kinesis stream.
 // The items are retrieved from the queue and marshaled into JSON before being sent to Kinesis.
-// If there are items in the queue, they are sent to Kinesis using the SendToKinesis method.
+// If there are items in the queue, they are sent to Kinesis using the sendToKinesis method.
 //
 // Returns:
 //
@@ -166,7 +166,7 @@ func (q *KinesisQueue) Flush() ([]any, error) {
 	}
 
 	if len(items) > 0 {
-		data, err := q.SendToKinesis(items)
+		data, err := q.sendToKinesis(items)
 		if err != nil {
 			return data, err
 		}
@@ -174,7 +174,7 @@ func (q *KinesisQueue) Flush() ([]any, error) {
 	return nil, nil
 }
 
-func (q *KinesisQueue) SendToKinesis(data []any) ([]any, error) {
+func (q *KinesisQueue) sendToKinesis(data []any) ([]any, error) {
 	itemBytes, err := json.Marshal(data)
 	if err != nil {
 		return data, err
