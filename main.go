@@ -21,6 +21,7 @@ type KinesisQueue struct {
 	lock          *sync.RWMutex
 	kinesisClient *kinesis.Client
 	streamName    string
+	originApp     string
 }
 
 // New creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
@@ -34,7 +35,22 @@ type KinesisQueue struct {
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
 func New(streamName string) (*KinesisQueue, error) {
-	return NewWithOpts(streamName, "sa-east-1", 1024)
+	return NewWithOpts(streamName, "sa-east-1", 1024, "")
+}
+
+// NewWithOrigin creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
+//
+// Parameters:
+//
+//	streamName: the name of the Kinesis stream to send messages to.
+//	origin: the app name that will be used to identify the origin of the messages.
+//
+// Returns:
+//
+//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	error: an error, if any occurred during the creation.
+func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
+	return NewWithOpts(streamName, "sa-east-1", 1024, origin)
 }
 
 // NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
@@ -43,18 +59,23 @@ func New(streamName string) (*KinesisQueue, error) {
 //
 //	streamName: the name of the Kinesis stream to send messages to.
 //	maxSizeKB: the maximum size in kilobytes for the batch.
+//	origin: the app name that will be used to identify the origin of the messages.
 //
 // Returns:
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int) (*KinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeKB int, origin string) (*KinesisQueue, error) {
 	if streamName == "" {
 		return &KinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
 
 	if maxSizeKB == 0 {
 		return &KinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
+	}
+
+	if origin == "" {
+		return &KinesisQueue{}, fmt.Errorf("origin must be provided")
 	}
 
 	kinesisClient, err := connectToKinesis(region)
@@ -68,6 +89,7 @@ func NewWithOpts(streamName string, region string, maxSizeKB int) (*KinesisQueue
 		lock:          &sync.RWMutex{},
 		kinesisClient: kinesisClient,
 		streamName:    streamName,
+		originApp:     origin,
 	}
 	return q, nil
 }
@@ -108,6 +130,11 @@ func (q *KinesisQueue) Enqueue(data map[string]interface{}) error {
 	currentTime := time.Now().UTC()
 	formattedTime := currentTime.Format("2006-01-02T15:04:05.999Z")
 	data["server_timestamp"] = formattedTime
+
+	// When origin available, add it to the data
+	if _, ok := data["origin"].(string); !ok {
+		data["origin"] = q.originApp
+	}
 
 	dataBytes, _ := json.Marshal(data)
 
