@@ -74,10 +74,6 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string)
 		return &KinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
 	}
 
-	if origin == "" {
-		return &KinesisQueue{}, fmt.Errorf("origin must be provided")
-	}
-
 	kinesisClient, err := connectToKinesis(region)
 	if err != nil {
 		return &KinesisQueue{}, err
