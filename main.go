@@ -128,7 +128,7 @@ func (q *KinesisQueue) Enqueue(data map[string]interface{}) error {
 	data["server_timestamp"] = formattedTime
 
 	// When origin available, add it to the data
-	if _, ok := data["origin"].(string); !ok {
+	if q.originApp != "" {
 		data["origin"] = q.originApp
 	}
 
