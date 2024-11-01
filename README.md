@@ -54,9 +54,19 @@ func main() {
 In the example above, we create a new `KinesisQueue` instance, enqueue data, and defer the execution of the `Flush` method to send the accumulated items to the Kinesis stream.
 
 
-### Note
+### Notes
 
-Make sure to use `defer` to execute the `Flush` method after enqueuing data to ensure that the accumulated items are sent to the Kinesis stream efficiently.
+- Make sure to use `defer` to execute the `Flush` method after enqueuing data to ensure that the accumulated items are sent to the Kinesis stream efficiently.
+
+- Also, you can use the alternative constructor `NewWithOrigin` that will pass the App name as origin in every event. \
+**⚠️IMPORTANT: This is a must use for audit logs!**
+	```go
+	queue, err := streamsurfer.NewWithOrigin("your-stream-name", "your-app-name")
+	if err != nil {
+		fmt.Println("Error creating KinesisQueue:", err)
+		return
+	}
+	```
 
 ## Default Queue Size and Custom Queue Size
 
