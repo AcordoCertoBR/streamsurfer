@@ -7,7 +7,7 @@
 To use `streamsurfer`, you need to have Go installed. You can install the module using the following command:
 
 ```bash
-go get github.com/AcordoCertoBR/streamsurfer@v1.0.6
+go get github.com/AcordoCertoBR/streamsurfer@v1.0.8
 ```
 
 ## Usage
@@ -68,17 +68,18 @@ In the example above, we create a new `KinesisQueue` instance, enqueue data, and
 	}
 	```
 
-## Send to Stream in annother account
+## Send to Stream in another account
 
 Use the constructor `NewWithStreamArn` with the stream arn. 
 You have to add permission to the stream. [AWS Doc](https://docs.aws.amazon.com/streams/latest/dev/controlling-access.html)
-	```go
-	queue, err := streamsurfer.NewWithStreamArn("your-stream-name","your-stream-arn", "your-app-name")
-	if err != nil {
-		fmt.Println("Error creating KinesisQueue:", err)
-		return
-	}
-	```
+
+```go
+queue, err := streamsurfer.NewWithStreamArn("your-stream-name","your-stream-arn", "your-app-name")
+if err != nil {
+	fmt.Println("Error creating KinesisQueue:", err)
+	return
+}
+```
 
 ## Default Queue Size and Custom Queue Size
 
