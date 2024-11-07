@@ -68,6 +68,18 @@ In the example above, we create a new `KinesisQueue` instance, enqueue data, and
 	}
 	```
 
+## Send to Stream in annother account
+
+Use the constructor `NewWithStreamArn` with the stream arn. 
+You have to add permission to the stream. [AWS Doc](https://docs.aws.amazon.com/streams/latest/dev/controlling-access.html)
+	```go
+	queue, err := streamsurfer.NewWithStreamArn("your-stream-name","your-stream-arn", "your-app-name")
+	if err != nil {
+		fmt.Println("Error creating KinesisQueue:", err)
+		return
+	}
+	```
+
 ## Default Queue Size and Custom Queue Size
 
 The `streamsurfer` module provides a default queue size of 1024 kilobytes for batching messages to be sent to a Kinesis stream. This default size ensures that a reasonable amount of data can be accumulated before being flushed to the stream.
@@ -83,11 +95,11 @@ If you have specific requirements or need to adjust the queue size based on your
 Here's an example of creating a `KinesisQueue` with a custom queue size:
 
 ```go
-queue, err := streamsurfer.NewWithOpts("your-stream-name", 2048)
+queue, err := streamsurfer.NewWithOpts("your-stream-name","region", 2048,"your-origin","your-stream-arn")
 ```
 
 In the example above, a `KinesisQueue` is created with a custom queue size of 2048 KB. Adjusting the queue size allows you to control how much data can be accumulated before triggering the flushing process to send the messages to the Kinesis stream.
-
+The `your-origin` and `your-stream-arn` are optional values.
 
 ## Special Thanks ❤️
 @JoaoLeal92
