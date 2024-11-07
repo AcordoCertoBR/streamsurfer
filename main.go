@@ -21,6 +21,7 @@ type KinesisQueue struct {
 	lock          *sync.RWMutex
 	kinesisClient *kinesis.Client
 	streamName    string
+	streamArn     string
 	originApp     string
 }
 
@@ -35,7 +36,7 @@ type KinesisQueue struct {
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
 func New(streamName string) (*KinesisQueue, error) {
-	return NewWithOpts(streamName, "sa-east-1", 1024, "")
+	return NewWithOpts(streamName, "sa-east-1", 1024, "", "")
 }
 
 // NewWithOrigin creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
@@ -50,7 +51,27 @@ func New(streamName string) (*KinesisQueue, error) {
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
 func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
-	return NewWithOpts(streamName, "sa-east-1", 1024, origin)
+	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
+}
+
+// NewWithStreamArn creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream
+// using the stream ARN. This method is useful to send messages to a stream in a different account.
+//
+// Parameters:
+//
+//	streamName: the name of the Kinesis stream to send messages to.
+//	streamArn: the arn of the Kinesis stream to send messages to.
+//	origin: the app name that will be used to identify the origin of the messages.
+//
+// Returns:
+//
+//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	error: an error, if any occurred during the creation.
+func NewWithStreamArn(streamName, streamArn, origin string) (*KinesisQueue, error) {
+	if streamArn == "" {
+		return &KinesisQueue{}, fmt.Errorf("streamArn must be provided")
+	}
+	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
 }
 
 // NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
@@ -58,16 +79,22 @@ func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
 // Parameters:
 //
 //	streamName: the name of the Kinesis stream to send messages to.
+//	region: the aws region. The default is sa-east-1.
 //	maxSizeKB: the maximum size in kilobytes for the batch.
 //	origin: the app name that will be used to identify the origin of the messages.
+//	streamArn: the ARN of the Kinesis stream to send messages to.
 //
 // Returns:
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int, origin string) (*KinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (*KinesisQueue, error) {
 	if streamName == "" {
 		return &KinesisQueue{}, fmt.Errorf("streamName must be provided")
+	}
+
+	if region == "" {
+		region = "sa-east-1"
 	}
 
 	if maxSizeKB == 0 {
@@ -86,6 +113,7 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string)
 		kinesisClient: kinesisClient,
 		streamName:    streamName,
 		originApp:     origin,
+		streamArn:     streamArn,
 	}
 	return q, nil
 }
@@ -212,11 +240,17 @@ func (q *KinesisQueue) sendToKinesis(data []any) ([]any, error) {
 		return data, err
 	}
 
-	_, err = q.kinesisClient.PutRecord(context.TODO(), &kinesis.PutRecordInput{
+	putRecord := kinesis.PutRecordInput{
 		Data:         itemBytes,
 		StreamName:   &q.streamName,
 		PartitionKey: aws.String(uuid.New().String()),
-	})
+	}
+
+	// When streamArn available, add it to the record input
+	if q.streamArn != "" {
+		putRecord.StreamARN = &q.streamArn
+	}
+	_, err = q.kinesisClient.PutRecord(context.TODO(), &putRecord)
 	if err != nil {
 		return data, fmt.Errorf("failed to put record to kinesis: %v", err)
 	}
