@@ -71,7 +71,7 @@ func NewWithStreamArn(streamName, streamArn, origin string) (*KinesisQueue, erro
 	if streamArn == "" {
 		return &KinesisQueue{}, fmt.Errorf("streamArn must be provided")
 	}
-	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
+	return NewWithOpts(streamName, "sa-east-1", 1024, origin, streamArn)
 }
 
 // NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
