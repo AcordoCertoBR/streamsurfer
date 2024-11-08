@@ -74,7 +74,7 @@ Use the constructor `NewWithStreamArn` with the stream arn.
 You have to add permission to the stream. [AWS Doc](https://docs.aws.amazon.com/streams/latest/dev/controlling-access.html)
 
 ```go
-queue, err := streamsurfer.NewWithStreamArn("your-stream-name","your-stream-arn", "your-app-name")
+queue, err := streamsurfer.NewWithStreamArn("your-stream-arn", "your-app-name")
 if err != nil {
 	fmt.Println("Error creating KinesisQueue:", err)
 	return

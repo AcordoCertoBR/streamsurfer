@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,7 +60,6 @@ func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
 //
 // Parameters:
 //
-//	streamName: the name of the Kinesis stream to send messages to.
 //	streamArn: the arn of the Kinesis stream to send messages to.
 //	origin: the app name that will be used to identify the origin of the messages.
 //
@@ -67,11 +67,23 @@ func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithStreamArn(streamName, streamArn, origin string) (*KinesisQueue, error) {
+func NewWithStreamArn(streamArn, origin string) (*KinesisQueue, error) {
 	if streamArn == "" {
 		return &KinesisQueue{}, fmt.Errorf("streamArn must be provided")
 	}
+	streamName, err := extractStreamNameFromARN(streamArn)
+	if err != nil {
+		return &KinesisQueue{}, err
+	}
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, streamArn)
+}
+
+func extractStreamNameFromARN(arn string) (string, error) {
+	parts := strings.Split(arn, "/")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid ARN format")
+	}
+	return parts[1], nil
 }
 
 // NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
