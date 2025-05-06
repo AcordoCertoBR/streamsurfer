@@ -15,7 +15,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type KinesisQueue struct {
+//go:generate mockery --name KinesisQueue --output ./mocks
+type KinesisQueue interface {
+	Enqueue(data map[string]any) error
+	Flush() ([]any, error)
+}
+
+type kinesisQueue struct {
 	q             *queue.Queue
 	maxSizeBytes  int
 	currentSize   int
@@ -36,7 +42,7 @@ type KinesisQueue struct {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func New(streamName string) (*KinesisQueue, error) {
+func New(streamName string) (KinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, "", "")
 }
 
@@ -51,7 +57,7 @@ func New(streamName string) (*KinesisQueue, error) {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
+func NewWithOrigin(streamName string, origin string) (KinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
 }
 
@@ -67,13 +73,13 @@ func NewWithOrigin(streamName string, origin string) (*KinesisQueue, error) {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithStreamArn(streamArn, origin string) (*KinesisQueue, error) {
+func NewWithStreamArn(streamArn, origin string) (KinesisQueue, error) {
 	if streamArn == "" {
-		return &KinesisQueue{}, fmt.Errorf("streamArn must be provided")
+		return &kinesisQueue{}, fmt.Errorf("streamArn must be provided")
 	}
 	streamName, err := extractStreamNameFromARN(streamArn)
 	if err != nil {
-		return &KinesisQueue{}, err
+		return &kinesisQueue{}, err
 	}
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, streamArn)
 }
@@ -100,9 +106,9 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 //	*KinesisQueue: a pointer to the newly created KinesisQueue.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (*KinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (KinesisQueue, error) {
 	if streamName == "" {
-		return &KinesisQueue{}, fmt.Errorf("streamName must be provided")
+		return &kinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
 
 	if region == "" {
@@ -110,15 +116,15 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string,
 	}
 
 	if maxSizeKB == 0 {
-		return &KinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
+		return &kinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
 	}
 
 	kinesisClient, err := connectToKinesis(region)
 	if err != nil {
-		return &KinesisQueue{}, err
+		return &kinesisQueue{}, err
 	}
 
-	q := &KinesisQueue{
+	q := &kinesisQueue{
 		q:             queue.New(0),
 		maxSizeBytes:  maxSizeKB,
 		lock:          &sync.RWMutex{},
@@ -154,7 +160,7 @@ func connectToKinesis(awsRegion string) (*kinesis.Client, error) {
 // Returns:
 //
 //	error: an error, if any occurred during the enqueue process.
-func (q *KinesisQueue) Enqueue(data map[string]interface{}) error {
+func (q *kinesisQueue) Enqueue(data map[string]any) error {
 	if _, ok := data["event"].(string); !ok {
 		return fmt.Errorf("event field is required")
 	}
@@ -191,8 +197,8 @@ func (q *KinesisQueue) Enqueue(data map[string]interface{}) error {
 	return nil
 }
 
-func (q *KinesisQueue) flush() ([]any, error) {
-	var items []interface{}
+func (q *kinesisQueue) flush() ([]any, error) {
+	var items []any
 	for q.currentSize > 0 {
 		if val, err := q.q.Get(1); err == nil {
 			items = append(items, val[0])
@@ -220,13 +226,13 @@ func (q *KinesisQueue) flush() ([]any, error) {
 //
 // Returns:
 //
-//	[]interface{}: a slice of items that were sent to Kinesis.
+//	[]any: a slice of items that were sent to Kinesis.
 //	error: an error, if any occurred during the flushing process.
-func (q *KinesisQueue) Flush() ([]any, error) {
+func (q *kinesisQueue) Flush() ([]any, error) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
-	var items []interface{}
+	var items []any
 	for q.currentSize > 0 {
 		if val, err := q.q.Get(1); err == nil {
 			items = append(items, val[0])
@@ -246,7 +252,7 @@ func (q *KinesisQueue) Flush() ([]any, error) {
 	return nil, nil
 }
 
-func (q *KinesisQueue) sendToKinesis(data []any) ([]any, error) {
+func (q *kinesisQueue) sendToKinesis(data []any) ([]any, error) {
 	itemBytes, err := json.Marshal(data)
 	if err != nil {
 		return data, err
