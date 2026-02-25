@@ -19,6 +19,7 @@ import (
 type KinesisQueue interface {
 	Enqueue(data map[string]any) error
 	Flush() ([]any, error)
+	Send(data map[string]any) error
 }
 
 type kinesisQueue struct {
@@ -160,27 +161,31 @@ func connectToKinesis(awsRegion string) (*kinesis.Client, error) {
 // Returns:
 //
 //	error: an error, if any occurred during the enqueue process.
-func (q *kinesisQueue) Enqueue(data map[string]any) error {
+func (q *kinesisQueue) enrichAndValidate(data map[string]any) error {
 	if _, ok := data["event"].(string); !ok {
 		return fmt.Errorf("event field is required")
 	}
 
-	q.lock.Lock()
-	defer q.lock.Unlock()
+	data["server_timestamp"] = time.Now().UTC().Format("2006-01-02T15:04:05.999Z")
 
-	// Add server timestamp to every event
-	currentTime := time.Now().UTC()
-	formattedTime := currentTime.Format("2006-01-02T15:04:05.999Z")
-	data["server_timestamp"] = formattedTime
-
-	// When origin available, add it to the data
 	if q.originApp != "" {
 		data["origin"] = q.originApp
 	}
 
-	dataBytes, _ := json.Marshal(data)
+	return nil
+}
 
+func (q *kinesisQueue) Enqueue(data map[string]any) error {
+	if err := q.enrichAndValidate(data); err != nil {
+		return err
+	}
+
+	dataBytes, _ := json.Marshal(data)
 	itemSize := len(dataBytes)
+
+	q.lock.Lock()
+	defer q.lock.Unlock()
+
 	if q.currentSize+itemSize >= q.maxSizeBytes {
 		_, err := q.flush()
 		if err != nil {
@@ -195,6 +200,17 @@ func (q *kinesisQueue) Enqueue(data map[string]any) error {
 
 	q.currentSize += itemSize
 	return nil
+}
+
+// Send sends data directly to Kinesis without using the internal queue.
+// Use this instead of Enqueue when low latency is required and batching is not needed.
+func (q *kinesisQueue) Send(data map[string]any) error {
+	if err := q.enrichAndValidate(data); err != nil {
+		return err
+	}
+
+	_, err := q.sendToKinesis([]any{data})
+	return err
 }
 
 func (q *kinesisQueue) flush() ([]any, error) {

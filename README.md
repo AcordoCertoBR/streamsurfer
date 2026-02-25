@@ -53,6 +53,29 @@ func main() {
 
 In the example above, we create a new `KinesisQueue` instance, enqueue data, and defer the execution of the `Flush` method to send the accumulated items to the Kinesis stream.
 
+## Direct Send (Low Latency)
+
+Use `Send` when you need to dispatch a single event immediately, without batching:
+
+```go
+queue, err := streamsurfer.NewWithOrigin("your-stream-name", "your-app-name")
+if err != nil {
+    fmt.Println("Error creating KinesisQueue:", err)
+    return
+}
+
+data := map[string]interface{}{
+    "event": "your-event-name", // required
+    "custom": "data",
+}
+
+err = queue.Send(data)
+if err != nil {
+    fmt.Println("Error sending data:", err)
+}
+```
+
+Unlike `Enqueue`, `Send` bypasses the internal queue and mutex entirely — each call goes straight to Kinesis. No `Flush` call is needed.
 
 ### Notes
 
