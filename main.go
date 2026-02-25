@@ -33,7 +33,7 @@ type kinesisQueue struct {
 	originApp     string
 }
 
-// New creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
+// New creates a new KinesisQueue for sending messages in a batch to a Kinesis stream.
 //
 // Parameters:
 //
@@ -41,13 +41,13 @@ type kinesisQueue struct {
 //
 // Returns:
 //
-//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func New(streamName string) (KinesisQueue, error) {
+func New(streamName string) (*kinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, "", "")
 }
 
-// NewWithOrigin creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
+// NewWithOrigin creates a new KinesisQueue for sending messages in a batch to a Kinesis stream.
 //
 // Parameters:
 //
@@ -56,13 +56,13 @@ func New(streamName string) (KinesisQueue, error) {
 //
 // Returns:
 //
-//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func NewWithOrigin(streamName string, origin string) (KinesisQueue, error) {
+func NewWithOrigin(streamName string, origin string) (*kinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
 }
 
-// NewWithStreamArn creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream
+// NewWithStreamArn creates a new KinesisQueue for sending messages in a batch to a Kinesis stream
 // using the stream ARN. This method is useful to send messages to a stream in a different account.
 //
 // Parameters:
@@ -72,16 +72,18 @@ func NewWithOrigin(streamName string, origin string) (KinesisQueue, error) {
 //
 // Returns:
 //
-//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func NewWithStreamArn(streamArn, origin string) (KinesisQueue, error) {
+func NewWithStreamArn(streamArn, origin string) (*kinesisQueue, error) {
 	if streamArn == "" {
 		return &kinesisQueue{}, fmt.Errorf("streamArn must be provided")
 	}
+
 	streamName, err := extractStreamNameFromARN(streamArn)
 	if err != nil {
 		return &kinesisQueue{}, err
 	}
+
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, streamArn)
 }
 
@@ -93,7 +95,7 @@ func extractStreamNameFromARN(arn string) (string, error) {
 	return parts[1], nil
 }
 
-// NewWithOpts creates a new KinesisQueue for sending messages  in a batch to a Kinesis stream.
+// NewWithOpts creates a new KinesisQueue for sending messages in a batch to a Kinesis stream.
 //
 // Parameters:
 //
@@ -105,9 +107,9 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 // Returns:
 //
-//	*KinesisQueue: a pointer to the newly created KinesisQueue.
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (KinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (*kinesisQueue, error) {
 	if streamName == "" {
 		return &kinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
