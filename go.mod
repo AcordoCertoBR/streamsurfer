@@ -1,4 +1,4 @@
-module github.com/AcordoCertoBR/streamsurfer
+module github.com/AcordoCertoBR/streamsurfer/v2
 
 go 1.23
 
