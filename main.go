@@ -3,6 +3,7 @@ package streamsurfer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -62,6 +63,22 @@ func NewWithOrigin(streamName string, origin string) (*kinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
 }
 
+// NewWithOriginAndMaxSize creates a new KinesisQueue for sending messages in a batch to a Kinesis stream.
+//
+// Parameters:
+//
+//	streamName: the name of the Kinesis stream to send messages to.
+//	origin: the app name that will be used to identify the origin of the messages.
+//	maxSizeBytes: the maximum size in bytes for the batch.
+//
+// Returns:
+//
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
+//	error: an error, if any occurred during the creation.
+func NewWithOriginAndMaxSize(streamName string, origin string, maxSizeBytes int) (*kinesisQueue, error) {
+	return NewWithOpts(streamName, "sa-east-1", maxSizeBytes, origin, "")
+}
+
 // NewWithStreamArn creates a new KinesisQueue for sending messages in a batch to a Kinesis stream
 // using the stream ARN. This method is useful to send messages to a stream in a different account.
 //
@@ -101,7 +118,7 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 //	streamName: the name of the Kinesis stream to send messages to.
 //	region: the aws region. The default is sa-east-1.
-//	maxSizeKB: the maximum size in kilobytes for the batch.
+//	maxSizeBytes: the maximum size in bytes for the batch.
 //	origin: the app name that will be used to identify the origin of the messages.
 //	streamArn: the ARN of the Kinesis stream to send messages to.
 //
@@ -109,7 +126,7 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 //	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (*kinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeBytes int, origin string, streamArn string) (*kinesisQueue, error) {
 	if streamName == "" {
 		return &kinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
@@ -118,8 +135,8 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string,
 		region = "sa-east-1"
 	}
 
-	if maxSizeKB == 0 {
-		return &kinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
+	if maxSizeBytes == 0 {
+		return &kinesisQueue{}, fmt.Errorf("maxSizeBytes must be provided")
 	}
 
 	kinesisClient, err := connectToKinesis(region)
@@ -129,7 +146,7 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string,
 
 	q := &kinesisQueue{
 		q:             queue.New(0),
-		maxSizeBytes:  maxSizeKB,
+		maxSizeBytes:  maxSizeBytes,
 		lock:          &sync.RWMutex{},
 		kinesisClient: kinesisClient,
 		streamName:    streamName,
@@ -154,15 +171,6 @@ func connectToKinesis(awsRegion string) (*kinesis.Client, error) {
 	return kinesis.NewFromConfig(cfg), nil
 }
 
-// Enqueue adds a new data item to the KinesisQueue for batch processing.
-//
-// Parameters:
-//
-//	data: a map containing the data to be enqueued. It must include an "event" field as a string.
-//
-// Returns:
-//
-//	error: an error, if any occurred during the enqueue process.
 func (q *kinesisQueue) enrichAndValidate(data map[string]any) error {
 	if _, ok := data["event"].(string); !ok {
 		return fmt.Errorf("event field is required")
@@ -177,7 +185,16 @@ func (q *kinesisQueue) enrichAndValidate(data map[string]any) error {
 	return nil
 }
 
-func (q *kinesisQueue) Enqueue(data map[string]any) error {
+// Enqueue adds a new data item to the KinesisQueue for batch processing.
+//
+// Parameters:
+//
+//	data: a map containing the data to be enqueued. It must include an "event" field as a string.
+//
+// Returns:
+//
+//	error: an error, if any occurred during the enqueue process.
+func (q *kinesisQueue) Enqueue(data map[string]any) (retErr error) {
 	if err := q.enrichAndValidate(data); err != nil {
 		return err
 	}
@@ -186,21 +203,30 @@ func (q *kinesisQueue) Enqueue(data map[string]any) error {
 	itemSize := len(dataBytes)
 
 	q.lock.Lock()
-	defer q.lock.Unlock()
 
+	var toFlush []any
 	if q.currentSize+itemSize >= q.maxSizeBytes {
-		_, err := q.flush()
-		if err != nil {
-			return err
-		}
+		toFlush = q.drainItems()
 	}
 
-	err := q.q.Put(data)
-	if err != nil {
+	// registered 1st → executes 2nd (after unlock)
+	defer func() {
+		if len(toFlush) > 0 {
+			if _, err := q.sendToKinesis(toFlush); err != nil {
+				retErr = errors.Join(retErr, err)
+			}
+		}
+	}()
+
+	// registered 2nd → executes 1st
+	defer q.lock.Unlock()
+
+	if err := q.q.Put(data); err != nil {
 		return err
 	}
 
 	q.currentSize += itemSize
+
 	return nil
 }
 
@@ -215,27 +241,6 @@ func (q *kinesisQueue) Send(data map[string]any) error {
 	return err
 }
 
-func (q *kinesisQueue) flush() ([]any, error) {
-	var items []any
-	for q.currentSize > 0 {
-		if val, err := q.q.Get(1); err == nil {
-			items = append(items, val[0])
-
-			itemBytes, _ := json.Marshal(val[0])
-			itemSize := len(itemBytes)
-			q.currentSize = q.currentSize - itemSize
-		}
-	}
-
-	if len(items) > 0 {
-		data, err := q.sendToKinesis(items)
-		if err != nil {
-			return data, err
-		}
-	}
-	return nil, nil
-}
-
 // Flush sends the accumulated items in the KinesisQueue to the Kinesis stream.
 //
 // This method locks the KinesisQueue, processes the items, and sends them to the Kinesis stream.
@@ -248,25 +253,13 @@ func (q *kinesisQueue) flush() ([]any, error) {
 //	error: an error, if any occurred during the flushing process.
 func (q *kinesisQueue) Flush() ([]any, error) {
 	q.lock.Lock()
-	defer q.lock.Unlock()
-
-	var items []any
-	for q.currentSize > 0 {
-		if val, err := q.q.Get(1); err == nil {
-			items = append(items, val[0])
-
-			itemBytes, _ := json.Marshal(val[0])
-			itemSize := len(itemBytes)
-			q.currentSize = q.currentSize - itemSize
-		}
-	}
+	items := q.drainItems()
+	q.lock.Unlock()
 
 	if len(items) > 0 {
-		data, err := q.sendToKinesis(items)
-		if err != nil {
-			return data, err
-		}
+		return q.sendToKinesis(items)
 	}
+
 	return nil, nil
 }
 
@@ -286,10 +279,34 @@ func (q *kinesisQueue) sendToKinesis(data []any) ([]any, error) {
 	if q.streamArn != "" {
 		putRecord.StreamARN = &q.streamArn
 	}
+
 	_, err = q.kinesisClient.PutRecord(context.TODO(), &putRecord)
 	if err != nil {
 		return data, fmt.Errorf("failed to put record to kinesis: %v", err)
 	}
 
 	return nil, nil
+}
+
+// drainItems removes all items from the internal queue and resets currentSize.
+// Caller must hold q.lock.
+func (q *kinesisQueue) drainItems() []any {
+	var items []any
+
+	for q.currentSize > 0 {
+		val, err := q.q.Get(1)
+		if err != nil {
+			break
+		}
+
+		items = append(items, val[0])
+		itemBytes, _ := json.Marshal(val[0])
+		q.currentSize -= len(itemBytes)
+	}
+
+	if q.currentSize < 0 {
+		q.currentSize = 0
+	}
+
+	return items
 }
