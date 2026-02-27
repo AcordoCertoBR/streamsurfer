@@ -192,8 +192,7 @@ func (q *kinesisQueue) Enqueue(data map[string]any) error {
 		toFlush = q.drainItems()
 	}
 
-	err := q.q.Put(data)
-	if err != nil {
+	if err := q.q.Put(data); err != nil {
 		q.lock.Unlock()
 		return err
 	}
@@ -202,7 +201,7 @@ func (q *kinesisQueue) Enqueue(data map[string]any) error {
 	q.lock.Unlock()
 
 	if len(toFlush) > 0 {
-		if _, err = q.sendToKinesis(toFlush); err != nil {
+		if _, err := q.sendToKinesis(toFlush); err != nil {
 			return err
 		}
 	}
@@ -273,18 +272,20 @@ func (q *kinesisQueue) sendToKinesis(data []any) ([]any, error) {
 func (q *kinesisQueue) drainItems() []any {
 	var items []any
 
-	size := q.q.Len()
-
-	for range size {
+	for q.currentSize > 0 {
 		val, err := q.q.Get(1)
 		if err != nil {
 			break
 		}
 
 		items = append(items, val[0])
+		itemBytes, _ := json.Marshal(val[0])
+		q.currentSize -= len(itemBytes)
 	}
 
-	q.currentSize = 0
+	if q.currentSize < 0 {
+		q.currentSize = 0
+	}
 
 	return items
 }
