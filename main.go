@@ -63,6 +63,22 @@ func NewWithOrigin(streamName string, origin string) (*kinesisQueue, error) {
 	return NewWithOpts(streamName, "sa-east-1", 1024, origin, "")
 }
 
+// NewWithOriginAndMaxSize creates a new KinesisQueue for sending messages in a batch to a Kinesis stream.
+//
+// Parameters:
+//
+//	streamName: the name of the Kinesis stream to send messages to.
+//	origin: the app name that will be used to identify the origin of the messages.
+//	maxSizeBytes: the maximum size in bytes for the batch.
+//
+// Returns:
+//
+//	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
+//	error: an error, if any occurred during the creation.
+func NewWithOriginAndMaxSize(streamName string, origin string, maxSizeBytes int) (*kinesisQueue, error) {
+	return NewWithOpts(streamName, "sa-east-1", maxSizeBytes, origin, "")
+}
+
 // NewWithStreamArn creates a new KinesisQueue for sending messages in a batch to a Kinesis stream
 // using the stream ARN. This method is useful to send messages to a stream in a different account.
 //
@@ -102,7 +118,7 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 //	streamName: the name of the Kinesis stream to send messages to.
 //	region: the aws region. The default is sa-east-1.
-//	maxSizeKB: the maximum size in kilobytes for the batch.
+//	maxSizeBytes: the maximum size in bytes for the batch.
 //	origin: the app name that will be used to identify the origin of the messages.
 //	streamArn: the ARN of the Kinesis stream to send messages to.
 //
@@ -110,7 +126,7 @@ func extractStreamNameFromARN(arn string) (string, error) {
 //
 //	*kinesisQueue: a pointer to the concrete kinesisQueue implementation.
 //	error: an error, if any occurred during the creation.
-func NewWithOpts(streamName string, region string, maxSizeKB int, origin string, streamArn string) (*kinesisQueue, error) {
+func NewWithOpts(streamName string, region string, maxSizeBytes int, origin string, streamArn string) (*kinesisQueue, error) {
 	if streamName == "" {
 		return &kinesisQueue{}, fmt.Errorf("streamName must be provided")
 	}
@@ -119,8 +135,8 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string,
 		region = "sa-east-1"
 	}
 
-	if maxSizeKB == 0 {
-		return &kinesisQueue{}, fmt.Errorf("maxSizeKB must be provided")
+	if maxSizeBytes == 0 {
+		return &kinesisQueue{}, fmt.Errorf("maxSizeBytes must be provided")
 	}
 
 	kinesisClient, err := connectToKinesis(region)
@@ -130,7 +146,7 @@ func NewWithOpts(streamName string, region string, maxSizeKB int, origin string,
 
 	q := &kinesisQueue{
 		q:             queue.New(0),
-		maxSizeBytes:  maxSizeKB,
+		maxSizeBytes:  maxSizeBytes,
 		lock:          &sync.RWMutex{},
 		kinesisClient: kinesisClient,
 		streamName:    streamName,
