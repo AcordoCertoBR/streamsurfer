@@ -3,6 +3,7 @@ package streamsurfer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -177,7 +178,7 @@ func (q *kinesisQueue) enrichAndValidate(data map[string]any) error {
 // Returns:
 //
 //	error: an error, if any occurred during the enqueue process.
-func (q *kinesisQueue) Enqueue(data map[string]any) error {
+func (q *kinesisQueue) Enqueue(data map[string]any) (retErr error) {
 	if err := q.enrichAndValidate(data); err != nil {
 		return err
 	}
@@ -192,19 +193,23 @@ func (q *kinesisQueue) Enqueue(data map[string]any) error {
 		toFlush = q.drainItems()
 	}
 
+	// registered 1st → executes 2nd (after unlock)
+	defer func() {
+		if len(toFlush) > 0 {
+			if _, err := q.sendToKinesis(toFlush); err != nil {
+				retErr = errors.Join(retErr, err)
+			}
+		}
+	}()
+
+	// registered 2nd → executes 1st
+	defer q.lock.Unlock()
+
 	if err := q.q.Put(data); err != nil {
-		q.lock.Unlock()
 		return err
 	}
 
 	q.currentSize += itemSize
-	q.lock.Unlock()
-
-	if len(toFlush) > 0 {
-		if _, err := q.sendToKinesis(toFlush); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
