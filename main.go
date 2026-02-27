@@ -273,16 +273,18 @@ func (q *kinesisQueue) sendToKinesis(data []any) ([]any, error) {
 func (q *kinesisQueue) drainItems() []any {
 	var items []any
 
-	for q.currentSize > 0 {
+	size := q.q.Len()
+
+	for range size {
 		val, err := q.q.Get(1)
 		if err != nil {
 			break
 		}
 
 		items = append(items, val[0])
-		itemBytes, _ := json.Marshal(val[0])
-		q.currentSize -= len(itemBytes)
 	}
+
+	q.currentSize = 0
 
 	return items
 }
