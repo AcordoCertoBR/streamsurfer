@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
-	"github.com/golang-collections/go-datastructures/queue"
 	"github.com/google/uuid"
 )
 
@@ -24,7 +23,7 @@ type KinesisQueue interface {
 }
 
 type kinesisQueue struct {
-	q             *queue.Queue
+	items         []any
 	maxSizeBytes  int
 	currentSize   int
 	lock          *sync.RWMutex
@@ -145,7 +144,6 @@ func NewWithOpts(streamName string, region string, maxSizeBytes int, origin stri
 	}
 
 	q := &kinesisQueue{
-		q:             queue.New(0),
 		maxSizeBytes:  maxSizeBytes,
 		lock:          &sync.RWMutex{},
 		kinesisClient: kinesisClient,
@@ -221,10 +219,7 @@ func (q *kinesisQueue) Enqueue(data map[string]any) (retErr error) {
 	// registered 2nd → executes 1st
 	defer q.lock.Unlock()
 
-	if err := q.q.Put(data); err != nil {
-		return err
-	}
-
+	q.items = append(q.items, data)
 	q.currentSize += itemSize
 
 	return nil
@@ -243,13 +238,12 @@ func (q *kinesisQueue) Send(data map[string]any) error {
 
 // Flush sends the accumulated items in the KinesisQueue to the Kinesis stream.
 //
-// This method locks the KinesisQueue, processes the items, and sends them to the Kinesis stream.
-// The items are retrieved from the queue and marshaled into JSON before being sent to Kinesis.
-// If there are items in the queue, they are sent to Kinesis using the sendToKinesis method.
+// This method takes the queued items while holding the lock and releases it before
+// marshaling them into JSON and sending them to Kinesis using the sendToKinesis method.
 //
 // Returns:
 //
-//	[]any: a slice of items that were sent to Kinesis.
+//	[]any: the items that could not be sent, or nil when they all were.
 //	error: an error, if any occurred during the flushing process.
 func (q *kinesisQueue) Flush() ([]any, error) {
 	q.lock.Lock()
@@ -288,25 +282,16 @@ func (q *kinesisQueue) sendToKinesis(data []any) ([]any, error) {
 	return nil, nil
 }
 
-// drainItems removes all items from the internal queue and resets currentSize.
+// drainItems hands over every queued item and resets currentSize.
 // Caller must hold q.lock.
+//
+// The batch is sent after the lock is released, so q.items is reset to nil
+// rather than resliced to [:0]: reusing the backing array would let the next
+// Enqueue overwrite items that are still on their way to Kinesis.
 func (q *kinesisQueue) drainItems() []any {
-	var items []any
-
-	for q.currentSize > 0 {
-		val, err := q.q.Get(1)
-		if err != nil {
-			break
-		}
-
-		items = append(items, val[0])
-		itemBytes, _ := json.Marshal(val[0])
-		q.currentSize -= len(itemBytes)
-	}
-
-	if q.currentSize < 0 {
-		q.currentSize = 0
-	}
+	items := q.items
+	q.items = nil
+	q.currentSize = 0
 
 	return items
 }
